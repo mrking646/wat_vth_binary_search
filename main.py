@@ -3,6 +3,7 @@ import nidcpower
 from openpyxl import load_workbook, Workbook
 import pandas as pd
 from config import wiring
+import numpy as np
 
 @attrs.define
 class chnVoltBias:
@@ -69,6 +70,15 @@ class VtlinSweep:
     V_step_G: float
     V_start_G: float
     V_stop_G: float
+    sourceDelay: float = attrs.field(
+        default=1e-3,
+        kw_only=True,
+    )
+    apertureTime: float = attrs.field(
+        default=1e-3,
+        kw_only=True,
+    )
+
 
 
 @attrs.define
@@ -146,21 +156,8 @@ class HCIsweep:
     #     default=1e-3,
     #     kw_only=True,
     # )
-    
-def populate():
-    wb = Workbook()    
-    ws = wb.active
-    ws['A1'] = 42
-    ws.append([1, 2, 3])
-    import datetime
-    ws['A2'] = datetime.datetime.now()
-    wb.save('sample.xlsx')
-
-def runHCI():
-    pass
-
-def dumpExceltoPython():
-    wb = load_workbook(filename='test_plan_HCI_1110_V3.xlsx')
+def dumpExceltoPython(testplan):
+    wb = load_workbook(filename=testplan)
     ws = wb.active
     dDut, dHCItest, dTest_Vtlin, dTest_VtSat, dTest_IbMAX, dResource = {}, {}, {}, {}, {}, {}
     header = []
@@ -246,44 +243,99 @@ def dumpExceltoPython():
         Ibmax = dTest_IbMAX[dut]
         dHCItest[dut] = HCIsweep(dResource[dut], dut, dTest_Vtlin[dut], dTest_VtSat[dut], dTest_IbMAX[dut])
     return dHCItest
+    
+class HCItest:
+    def __init__(self, testplan):
+        self.dHCItest = dumpExceltoPython(testplan)
+        
+    def populate():
+        wb = Workbook()    
+        ws = wb.active
+        ws['A1'] = 42
+        ws.append([1, 2, 3])
+        import datetime
+        ws['A2'] = datetime.datetime.now()
+        wb.save('sample.xlsx')
 
-def runStress(sess, dHCItest):
-    sess.source_mode = nidcpower.SourceMode.SINGLE_POINT
-    sess.voltage_level_autorange = True
+    def runHCI(self):
+        pass
 
-# would it be fine if we dump all channels of 4163 into a session and we then open relays we don't need?
-def common_settings(**HCI):
-    sess = nidcpower.Session(resource_name='SMU1, SMU2', channels=range(0, 24), reset=False, options={'Simulate': True, 'DriverSetup': 'Model:4163; BoardType:PXIe'})
-    sess.voltage_level_autorange = True
-    sess.current_limit_autorange = True
-    sess.output_function = nidcpower.OutputFunction.DC_VOLTAGE
-    sess.voltage_level = 0
-    sess.current_limit = 1e-3
-    sess.output_connected = False # turn off all channels 
-    sess.output_cutoff_enabled = True
-    return sess
+    def runStress(sess, dHCItest):
+        sess.source_mode = nidcpower.SourceMode.SINGLE_POINT
+        sess.voltage_level_autorange = True
 
-def constructVtlinSweeptest(sess, **HCI):
-    pass
+    # would it be fine if we dump all channels of 4163 into a session and we then open the relays we don't need?
+    def common_settings(self):
+        sess = nidcpower.Session(resource_name='SMU1, SMU2', reset=False, options={'Simulate': True, 'DriverSetup': {'Model':'4163', 'BoardType':'PXIe'}})
+        print(sess.channels['SMU1/0,SMU1/1'])
+        sess.voltage_level_autorange = True
+        sess.current_limit_autorange = True
+        sess.output_function = nidcpower.OutputFunction.DC_VOLTAGE
+        sess.voltage_level = 0
+        sess.current_limit = 1e-3
+        sess.source_mode = nidcpower.SourceMode.SEQUENCE
+        sess.output_connected = False # turn off all channels 
+        sess.output_enabled = True
+        return sess
 
-def constructVtSatSweeptest(sess, **HCI):
-    pass
+    def constructVtlinSweeptest(self):
+        sess = self.common_settings()
+        strChnGate = ''
+        strChnDrain = ''
+        strChnSource = ''
+        strChnBulk = ''
+        properties_used = ['output_enabled', 'output_function', 'voltage_level']
+        # sess.create_advanced_sequence(sequence_name='VtlinSweep', set_as_active_sequence=True, property_names=properties_used)
+        # sess.create_advanced_sequence_step(set_as_active_step=True)
+        
+        for dut in self.dHCItest:
+            sourceTrigger = f'{self.dHCItest[dut].Vtlin.resource.GATE[0]}'
+            chnGate = sess.channels[','.join(self.dHCItest[dut].Vtlin.resource.GATE)]
+            chnDrain = sess.channels[','.join(self.dHCItest[dut].Vtlin.resource.DRAIN)]
+            chnSource = sess.channels[','.join(self.dHCItest[dut].Vtlin.resource.SOURCE)]
+            chnBulk = sess.channels[','.join(self.dHCItest[dut].Vtlin.resource.BULK)]
+            vStart, vStop, vStep = self.dHCItest[dut].Vtlin.V_start_G, self.dHCItest[dut].Vtlin.V_stop_G, self.dHCItest[dut].Vtlin.V_step_G
+            numStep = round((vStop+vStep/2 - vStart)/vStep)+1
+            tSteps = np.ones(numStep+1)
+            vSteps = np.zeros(numStep+1)
 
-def constructIbMAXSweeptest(sess, **HCI):
-    pass
+            vSteps[:-1] = range(numStep)
+            vSteps *= vStep
+            tSteps *= self.dHCItest[dut].Vtlin.sourceDelay
+            chnGate.set_sequence(vSteps, tSteps)
+            vStepsDrain = np.ones(numStep+1)*self.dHCItest[dut].Vtlin.V_force_D
+            print(vStepsDrain)
+            chnDrain.set_sequence(vStepsDrain, tSteps)
+            vStepsSource = np.ones(numStep+1)*self.dHCItest[dut].Vtlin.V_force_S
+            chnSource.set_sequence(vStepsSource, tSteps)
+            vStepsBulk = np.ones(numStep+1)*self.dHCItest[dut].Vtlin.V_force_B
+            chnBulk.set_sequence(vStepsBulk, tSteps)
+            sess.aperture_time = self.dHCItest[dut].Vtlin.apertureTime
+            #set triggers for Drain, source and bulk
+            chnDrain.
 
 
-def write_results(sess):
-    pass
 
 
-def populate(session):
-    pass
 
 
-lstHCI = []
-dHCItest = dumpExceltoPython()
-print(common_settings(**dHCItest))
+    def constructVtSatSweeptest(self, sess, **HCI):
+        pass
+
+    def constructIbMAXSweeptest(self, sess, **HCI):
+        pass
+
+
+    def write_results(self, sess):
+        pass
+
+
+    def populate(session):
+        pass
+
+
+hci = HCItest('test_plan_HCI_1110_V3.xlsx')
+hci.constructVtlinSweeptest()
 
 
 
