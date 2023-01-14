@@ -47,6 +47,27 @@ class HCIstress:
         kw_only=True,
     )
 
+@attrs.define
+class CurrentLimit:
+    low_level = attrs.field(
+        default=10e-6,
+        kw_only=True,
+    )
+    high_level = attrs.field(
+        default=1e-3,
+        kw_only=True,
+    )
+
+@attrs.define
+class CurrentLimitRange:
+    low_level = attrs.field(
+        default=100e-9,
+        kw_only=True,
+    )
+    high_level = attrs.field(
+        default=30e-3,
+        kw_only=True,
+    )
 
 
 @attrs.define
@@ -70,6 +91,8 @@ class VtlinSweep:
     V_step_G: float
     V_start_G: float
     V_stop_G: float
+    # CurrentLimit: CurrentLimit
+    # CurrentLimitRange: CurrentLimitRange
     sourceDelay: float = attrs.field(
         default=1e-3,
         kw_only=True,
@@ -78,6 +101,7 @@ class VtlinSweep:
         default=1e-3,
         kw_only=True,
     )
+
 
 
 
@@ -94,6 +118,8 @@ class VtSatSweep:
     V_step_G: float
     V_start_G: float
     V_stop_G: float
+    CurrentLimit: CurrentLimit
+    CurrentLimitRange: CurrentLimitRange
 
 
 @attrs.define
@@ -109,6 +135,9 @@ class IbMaxSweep:
     V_step_G: float
     V_start_G: float
     V_stop_G: float
+    CurrentLimit: CurrentLimit
+    CurrentLimitRange: CurrentLimitRange
+
 
 
 @attrs.define
@@ -130,32 +159,7 @@ class HCIsweep:
         kw_only=True,
     )
 
-    # vStart : float = attrs.field(
-    #     default=0,
-    #     kw_only=True,
-    # )
-    # vStop : float = attrs.field(
-    #     default=0,
-    #     kw_only=True,
-    # )
-    # vStep : float = attrs.field(
-    #     default=0,
-    #     kw_only=True,
-    # )
-
-    # biases: list[chnVoltBias] = attrs.field(
-    #     validator=attrs.validators.deep_iterable(member_validator=attrs.validators.instance_of((chnVoltBias)))
-    # )
-
-    # sourceDelay: float = attrs.field(
-    #     default=1e-3,
-    #     kw_only=True,
-    # )
-
-    # apertureTime: float = attrs.field(
-    #     default=1e-3,
-    #     kw_only=True,
-    # )
+  
 def dumpExceltoPython(testplan):
     wb = load_workbook(filename=testplan)
     ws = wb.active
@@ -247,7 +251,8 @@ def dumpExceltoPython(testplan):
 class HCItest:
     def __init__(self, testplan):
         self.dHCItest = dumpExceltoPython(testplan)
-        
+        self.current_limit = CurrentLimit()
+        self.current_limit_range = CurrentLimitRange()
     def populate():
         wb = Workbook()    
         ws = wb.active
@@ -268,8 +273,8 @@ class HCItest:
     def common_settings(self):
         sess = nidcpower.Session(resource_name='SMU1, SMU2', reset=False, options={'Simulate': True, 'DriverSetup': {'Model':'4163', 'BoardType':'PXIe'}})
         print(sess.channels['SMU1/0,SMU1/1'])
-        sess.voltage_level_autorange = True
-        sess.current_limit_autorange = True
+        sess.voltage_level_autorange = False
+        sess.current_limit_autorange = False
         sess.output_function = nidcpower.OutputFunction.DC_VOLTAGE
         sess.voltage_level = 0
         sess.current_limit = 1e-3
@@ -278,44 +283,62 @@ class HCItest:
         sess.output_enabled = True
         return sess
 
-    def constructVtlinSweeptest(self):
+    def _constructVtlinSweeptest(self):
         sess = self.common_settings()
         strChnGate = ''
         strChnDrain = ''
         strChnSource = ''
         strChnBulk = ''
+        dSteps = {}
+        dStepsForALLduts_GATE = {}
+        dStepsForALLduts_DRAIN = {}
+        dStepsForALLduts_SOURCE = {}
+        dStepsForALLduts_BULK = {}
         properties_used = ['output_enabled', 'output_function', 'voltage_level']
-        # sess.create_advanced_sequence(sequence_name='VtlinSweep', set_as_active_sequence=True, property_names=properties_used)
+        sess.create_advanced_sequence(sequence_name='VtlinSweep', set_as_active_sequence=True, property_names=properties_used)
         # sess.create_advanced_sequence_step(set_as_active_step=True)
-        
+
         for dut in self.dHCItest:
-            sourceTrigger = f'{self.dHCItest[dut].Vtlin.resource.GATE[0]}'
-            chnGate = sess.channels[','.join(self.dHCItest[dut].Vtlin.resource.GATE)]
-            chnDrain = sess.channels[','.join(self.dHCItest[dut].Vtlin.resource.DRAIN)]
-            chnSource = sess.channels[','.join(self.dHCItest[dut].Vtlin.resource.SOURCE)]
-            chnBulk = sess.channels[','.join(self.dHCItest[dut].Vtlin.resource.BULK)]
             vStart, vStop, vStep = self.dHCItest[dut].Vtlin.V_start_G, self.dHCItest[dut].Vtlin.V_stop_G, self.dHCItest[dut].Vtlin.V_step_G
             numStep = round((vStop+vStep/2 - vStart)/vStep)+1
-            tSteps = np.ones(numStep+1)
-            vSteps = np.zeros(numStep+1)
+            container = np.ones(numStep+1)
+            vSteps = np.linspace(vStart, vStop, numStep)
+            dStepsForALLduts_GATE[dut] = vSteps
+            dStepsForALLduts_DRAIN[dut] =  container * self.dHCItest[dut].Vtlin.V_force_D
+            dStepsForALLduts_SOURCE[dut] = container * self.dHCItest[dut].Vtlin.V_force_S
+            dStepsForALLduts_BULK[dut] = container * self.dHCItest[dut].Vtlin.V_force_B
+            # print(dStepsForALLduts_GATE[dut])
+        
 
-            vSteps[:-1] = range(numStep)
-            vSteps *= vStep
-            tSteps *= self.dHCItest[dut].Vtlin.sourceDelay
-            chnGate.set_sequence(vSteps, tSteps)
-            vStepsDrain = np.ones(numStep+1)*self.dHCItest[dut].Vtlin.V_force_D
-            print(vStepsDrain)
-            chnDrain.set_sequence(vStepsDrain, tSteps)
-            vStepsSource = np.ones(numStep+1)*self.dHCItest[dut].Vtlin.V_force_S
-            chnSource.set_sequence(vStepsSource, tSteps)
-            vStepsBulk = np.ones(numStep+1)*self.dHCItest[dut].Vtlin.V_force_B
-            chnBulk.set_sequence(vStepsBulk, tSteps)
-            sess.aperture_time = self.dHCItest[dut].Vtlin.apertureTime
-            #set triggers for Drain, source and bulk
-            chnDrain.
-
-
-
+        
+        for i in range(len(dStepsForALLduts_GATE)):
+            sess.create_advanced_sequence_step(set_as_active_step=True)
+            for dut in self.dHCItest:
+                chnGate = sess.channels[','.join(self.dHCItest[dut].Vtlin.resource.GATE)]
+                chnDrain = sess.channels[','.join(self.dHCItest[dut].Vtlin.resource.DRAIN)]
+                chnSource = sess.channels[','.join(self.dHCItest[dut].Vtlin.resource.SOURCE)]
+                chnBulk = sess.channels[','.join(self.dHCItest[dut].Vtlin.resource.BULK)]
+                chnGate.voltage_level = dStepsForALLduts_GATE[dut][i]
+                chnDrain.voltage_level = dStepsForALLduts_DRAIN[dut][i]
+                chnSource.voltage_level = dStepsForALLduts_SOURCE[dut][i]
+                chnBulk.voltage_level = dStepsForALLduts_BULK[dut][i]
+                chnGate.output_enabled = True
+                chnDrain.output_enabled = True
+                chnSource.output_enabled = True
+                chnBulk.output_enabled = True
+                chnGate.output_function = nidcpower.OutputFunction.DC_VOLTAGE
+                chnDrain.output_function = nidcpower.OutputFunction.DC_VOLTAGE
+                chnSource.output_function = nidcpower.OutputFunction.DC_VOLTAGE
+                chnBulk.output_function = nidcpower.OutputFunction.DC_VOLTAGE
+                chnBulk.current_limit = self.current_limit.high_level
+                chnSource.current_limit = self.current_limit.high_level
+                chnDrain.current_limit = self.current_limit.high_level
+                chnGate.current_limit = self.current_limit.low_level
+                chnBulk.current_limit_range = self.current_limit_range.high_level
+                chnSource.current_limit_range = self.current_limit_range.high_level
+                chnDrain.current_limit_range = self.current_limit_range.high_level
+                chnGate.current_limit_range = self.current_limit_range.low_level
+        return sess
 
 
 
@@ -333,9 +356,22 @@ class HCItest:
     def populate(session):
         pass
 
+    def runVtlin(self):
+        sess = self._constructVtlinSweeptest()
+        sess.initiate()
+        for dut in self.dHCItest:
+            for drain in self.dHCItest[dut].Vtlin.resource.DRAIN:
+                chnDrain = sess.channels[drain]
+                num = chnDrain.fetch_backlog
+                print(num)
+                meas = chnDrain.fetch_multiple(count=num, timeout=10.0)
+                print(meas)
+
+
+        
 
 hci = HCItest('test_plan_HCI_1110_V3.xlsx')
-hci.constructVtlinSweeptest()
+hci.runVtlin()
 
 
 
