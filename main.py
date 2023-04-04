@@ -359,7 +359,7 @@ class HCItest:
 
     # would it be fine if we dump all channels of 4163 into a self.session and we then open the relays we don't need?
     def common_settings(self):
-        self.sess = nidcpower.Session(resource_name='SMU1', reset=True,  options = {'simulate': False, 'driver_setup': {'Model': '4163', 'BoardType': 'PXIe', }, })
+        self.sess = nidcpower.Session(resource_name='SMU1', reset=True,  options = {'simulate': True, 'driver_setup': {'Model': '4163', 'BoardType': 'PXIe', }, })
         print(self.sess.channels['SMU1/0,SMU1/1'])
         self.sess.voltage_level_autorange = True
         self.sess.current_limit_autorange = True
@@ -421,7 +421,7 @@ class HCItest:
 
 
         #step
-        print(max_length)
+        # print(max_length)
         for i in range(max_length):
             self.sess.create_advanced_sequence_step(set_as_active_step=True)
             for dut in self.dHCItest:
@@ -465,8 +465,8 @@ class HCItest:
 
 
     def _constructVtSatSweeptest(self, **HCI):
-        # self.sess = self.common_settings()
         self.sess.abort()
+        # self.sess = self.common_settings()
         strChnGate = ''
         strChnDrain = ''
         strChnSource = ''
@@ -476,43 +476,61 @@ class HCItest:
         dStepsForALLduts_DRAIN = {}
         dStepsForALLduts_SOURCE = {}
         dStepsForALLduts_BULK = {}
-        properties_used = ['output_enabled', 'output_function', 'voltage_level']
-        
+        properties_used = ['output_enabled', 'output_function', 'voltage_level', 'current_limit']
         self.sess.create_advanced_sequence(sequence_name='VtsatSweep', set_as_active_sequence=True, property_names=properties_used)
         # self.sess.create_advanced_sequence_step(set_as_active_step=True)
 
+        max_length = 0
         for dut in self.dHCItest:
+            
             vStart, vStop, vStep = self.dHCItest[dut].VtSat.V_start_G, self.dHCItest[dut].VtSat.V_stop_G, self.dHCItest[dut].VtSat.V_step_G
             numStep = round((vStop+vStep/2 - vStart)/vStep)+1
             container = np.ones(numStep+1)
             vSteps = np.linspace(vStart, vStop, numStep)
+            if max_length < len(vSteps):
+                max_length = len(vSteps)
             dStepsForALLduts_GATE[dut] = vSteps
+            # print(dStepsForALLduts_GATE[dut])
             dStepsForALLduts_DRAIN[dut] =  container * self.dHCItest[dut].VtSat.V_force_D
             dStepsForALLduts_SOURCE[dut] = container * self.dHCItest[dut].VtSat.V_force_S
             dStepsForALLduts_BULK[dut] = container * self.dHCItest[dut].VtSat.V_force_B
             # print(dStepsForALLduts_GATE[dut])
         
+        # stuff zero to the end of the shorter ones
+        for dut in self.dHCItest:
+            if len(dStepsForALLduts_GATE[dut]) < max_length:
+                dStepsForALLduts_GATE[dut] = np.append(dStepsForALLduts_GATE[dut], np.zeros(max_length-len(dStepsForALLduts_GATE[dut])))
+                dStepsForALLduts_DRAIN[dut] = np.append(dStepsForALLduts_DRAIN[dut], np.zeros(max_length-len(dStepsForALLduts_DRAIN[dut])))
+                dStepsForALLduts_SOURCE[dut] = np.append(dStepsForALLduts_SOURCE[dut], np.zeros(max_length-len(dStepsForALLduts_SOURCE[dut])))
+                dStepsForALLduts_BULK[dut] = np.append(dStepsForALLduts_BULK[dut], np.zeros(max_length-len(dStepsForALLduts_BULK[dut])))
 
-        
-        for i in range(len(dStepsForALLduts_GATE)):
+            # print(dStepsForALLduts_GATE[dut])
+            # print(dStepsForALLduts_GATE[dut])
+
+
+        #step
+        # print(max_length)
+        for i in range(max_length):
             self.sess.create_advanced_sequence_step(set_as_active_step=True)
             for dut in self.dHCItest:
                 chnGate = self.sess.channels[','.join(self.dHCItest[dut].VtSat.resource.GATE)]
                 chnDrain = self.sess.channels[','.join(self.dHCItest[dut].VtSat.resource.DRAIN)]
                 chnSource = self.sess.channels[','.join(self.dHCItest[dut].VtSat.resource.SOURCE)]
                 chnBulk = self.sess.channels[','.join(self.dHCItest[dut].VtSat.resource.BULK)]
+
                 chnGate.voltage_level = dStepsForALLduts_GATE[dut][i]
                 chnDrain.voltage_level = dStepsForALLduts_DRAIN[dut][i]
                 chnSource.voltage_level = dStepsForALLduts_SOURCE[dut][i]
                 chnBulk.voltage_level = dStepsForALLduts_BULK[dut][i]
+                # print(dStepsForALLduts_GATE[dut][i])
                 chnGate.output_enabled = True
                 chnDrain.output_enabled = True
                 chnSource.output_enabled = True
                 chnBulk.output_enabled = True
-                chnGate.output_connected = True
-                chnDrain.output_connected = True
-                chnSource.output_connected = True
-                chnBulk.output_connected = True
+                # chnGate.output_connected = True
+                # chnDrain.output_connected = True
+                # chnSource.output_connected = True
+                # chnBulk.output_connected = True
                 chnGate.output_function = nidcpower.OutputFunction.DC_VOLTAGE
                 chnDrain.output_function = nidcpower.OutputFunction.DC_VOLTAGE
                 chnSource.output_function = nidcpower.OutputFunction.DC_VOLTAGE
@@ -521,15 +539,14 @@ class HCItest:
                 chnSource.current_limit = self.current_limit.high_level
                 chnDrain.current_limit = self.current_limit.high_level
                 chnGate.current_limit = self.current_limit.low_level
-                # chnBulk.current_limit_range = self.current_limit_range.high_level
-                # chnSource.current_limit_range = self.current_limit_range.high_level
-                # chnDrain.current_limit_range = self.current_limit_range.high_level
-                # chnGate.current_limit_range = self.current_limit_range.low_level
-                chnBulk.current_limit_autorange = True
-                chnSource.current_limit_autorange = True
-                chnDrain.current_limit_autorange = True
-                chnGate.current_limit_autorange = True
-        
+                chnBulk.current_limit_range = self.current_limit_range.high_level
+                chnSource.current_limit_range = self.current_limit_range.high_level
+                chnDrain.current_limit_range = self.current_limit_range.high_level
+                chnGate.current_limit_range = self.current_limit_range.low_level
+                # chnBulk.current_limit_autorange = True
+                # chnSource.current_limit_autorange = True
+                # chnDrain.current_limit_autorange = True
+                # chnGate.current_limit_autorange = True
         self.sess.commit()
 
 
@@ -662,9 +679,7 @@ hci.common_settings()
 hci._constructVtlinSweeptest()
 hci._constructVtSatSweeptest()
 hci._constructIbMAXSweeptest()
-# hci.runVtlin()
-# hci.runVtSat()
-# hci.runIbMAX()
+
 
 for i in range(len(hci.stressInterval)):
     # print(hci.stressInterval[i])
