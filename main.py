@@ -120,8 +120,15 @@ class VtSatSweep:
     V_step_G: float
     V_start_G: float
     V_stop_G: float
-    CurrentLimit: CurrentLimit
-    CurrentLimitRange: CurrentLimitRange
+    CurrentLimit: CurrentLimit               =  attrs.field(
+        default=CurrentLimit(),
+        kw_only=True,
+    )
+
+    CurrentLimitRange: CurrentLimitRange     = attrs.field(
+        default=CurrentLimitRange(),
+        kw_only=True,
+    )
 
 
 @attrs.define
@@ -130,6 +137,7 @@ class IbMaxSweep:
     V_force_D: float
     V_force_S: float
     V_force_B: float
+    V_force_G: float
     I_compl_G: float
     I_compl_D: float
     I_compl_S: float
@@ -137,8 +145,15 @@ class IbMaxSweep:
     V_step_G: float
     V_start_G: float
     V_stop_G: float
-    CurrentLimit: CurrentLimit
-    CurrentLimitRange: CurrentLimitRange
+    CurrentLimit: CurrentLimit               =  attrs.field(
+        default=CurrentLimit(),
+        kw_only=True,
+    )
+
+    CurrentLimitRange: CurrentLimitRange     = attrs.field(
+        default=CurrentLimitRange(),
+        kw_only=True,
+    )
 
 
 
@@ -225,7 +240,7 @@ def dumpExceltoPython(testplan, sitesNum):
             iComplD = df_plan.loc[count,  ' test.I_compl_D']
             iComplS = df_plan.loc[count,  ' test.I_compl_S']
             iComplB = df_plan.loc[count,  ' test.I_compl_B']
-            dTest_VtSat[dut] = VtlinSweep(dResource[dut], vForceD, vForceS, vForceB, iComplG, iComplD, iComplS, iComplB, vStepG, vStartG, vStopG)
+            dTest_VtSat[dut] = VtSatSweep(dResource[dut], vForceD, vForceS, vForceB, iComplG, iComplD, iComplS, iComplB, vStepG, vStartG, vStopG)
         elif 'Ibmax' in c:
             vForceD = df_plan.loc[count,  ' test.V_force_D'] # stress Drain voltage
             vForceS = df_plan.loc[count,  ' test.V_force_S']
@@ -238,7 +253,7 @@ def dumpExceltoPython(testplan, sitesNum):
             iComplD = df_plan.loc[count,  ' test.I_compl_D']
             iComplS = df_plan.loc[count,  ' test.I_compl_S']
             iComplB = df_plan.loc[count,  ' test.I_compl_B']
-            dTest_IbMAX[dut] = VtlinSweep(dResource[dut], vForceD, vForceS, vForceB, iComplG, iComplD, iComplS, iComplB, vStepG, vStartG, vStopG)
+            dTest_IbMAX[dut] = IbMaxSweep(dResource[dut], vForceD, vForceS, vForceB, iComplG, iComplD, iComplS, iComplB, iComplG, vStepG, vStartG, vStopG)
         # print(dTest[c])
         count += 1
 
@@ -250,14 +265,17 @@ def dumpExceltoPython(testplan, sitesNum):
         Ibmax = dTest_IbMAX[dut]
         dHCItest[dut] = HCIsweep(dResource[dut], dut, dTest_Vtlin[dut], dTest_VtSat[dut], dTest_IbMAX[dut])
     return dHCItest
-    
+
+from funcs import generateStressTiming
 class HCItest:
+    
+
     def __init__(self, testplan, sitesNum):
         self.dHCItest = dumpExceltoPython(testplan, sitesNum=sitesNum)
         self.current_limit = CurrentLimit()
         self.current_limit_range = CurrentLimitRange()
         self.sess = None
-        self.stressInterval = None
+        self.stressInterval = generateStressTiming(20, num=5)
         
     def populate():
         wb = Workbook()    
@@ -274,6 +292,7 @@ class HCItest:
     # do voltage stress
     def runStress(self, interval):
         self.sess.abort()
+        self.sess.active_advanced_sequence = ''
         self.sess.source_mode = nidcpower.SourceMode.SINGLE_POINT
         self.sess.voltage_level_autorange = True
         self.sess.current_limit_autorange = True
@@ -282,6 +301,7 @@ class HCItest:
         self.sess.current_limit = 1e-3
         self.sess.output_connected = False
         self.sess.output_enabled = False
+        self.sess.measure_when = nidcpower.MeasureWhen.ON_DEMAND
 
         for dut in self.dHCItest:
             chnGate = self.sess.channels[','.join(self.dHCItest[dut].Vtlin.resource.GATE)]
@@ -315,11 +335,11 @@ class HCItest:
             self.sess.commit()
             
             with self.sess.initiate():
-                t_begin = time.time()
-                while time.time() - t_begin < interval:
+                t_begin = hightime.timedelta(seconds=(time.time()))
+                while hightime.timedelta(seconds=(time.time())) - t_begin < interval:
                     time.sleep(0.1)
                     measurements = self.sess.measure_multiple()
-                    print(measurements)
+                    # print(measurements)
                 else:
                     self.sess.abort()
                     self.sess.output_enabled = False
@@ -339,7 +359,7 @@ class HCItest:
 
     # would it be fine if we dump all channels of 4163 into a self.session and we then open the relays we don't need?
     def common_settings(self):
-        self.sess = nidcpower.Session(resource_name='SMU1', reset=True,  options = {'simulate': True, 'driver_setup': {'Model': '4163', 'BoardType': 'PXIe', }, })
+        self.sess = nidcpower.Session(resource_name='SMU1', reset=True,  options = {'simulate': False, 'driver_setup': {'Model': '4163', 'BoardType': 'PXIe', }, })
         print(self.sess.channels['SMU1/0,SMU1/1'])
         self.sess.voltage_level_autorange = True
         self.sess.current_limit_autorange = True
@@ -580,12 +600,18 @@ class HCItest:
     def write_results(self):
         pass
 
+    def prepareForSequenceMode(self):
+        self.sess.abort()
+        self.sess.source_mode = nidcpower.SourceMode.SEQUENCE
+        self.sess.measure_when = nidcpower.MeasureWhen.AUTOMATICALLY_AFTER_SOURCE_COMPLETE
+        
 
     def populate(self):
         pass
 
     def runVtlin(self):
         # self.sess.abort()
+        self.sess.source_mode = nidcpower.SourceMode.SEQUENCE
         self.sess.active_advanced_sequence = 'VtlinSweep'
         with self.sess.initiate():
             self.sess.wait_for_event(nidcpower.Event.SEQUENCE_ENGINE_DONE, timeout=100.0)
@@ -595,48 +621,53 @@ class HCItest:
                     num = chnDrain.fetch_backlog
                     print(num)
                     meas = chnDrain.fetch_multiple(count=num, timeout=100.0)
-                    print(meas)
+                    # print(meas)
+        print("Vtlin Complete")
 
     def runVtSat(self):
         self.sess.abort()
+        self.sess.source_mode = nidcpower.SourceMode.SEQUENCE
         self.sess.active_advanced_sequence = 'VtsatSweep'
-        self.sess.initiate()
-        timeout = hightime.timedelta(seconds=10)
-        self.sess.wait_for_event(nidcpower.Event.SEQUENCE_ENGINE_DONE, timeout=timeout)
-        for dut in self.dHCItest:
-            for drain in self.dHCItest[dut].VtSat.resource.DRAIN:
-                chnDrain = self.sess.channels[drain]
-                num = chnDrain.fetch_backlog
-                print(num)
-                meas = chnDrain.fetch_multiple(count=num, timeout=10.0)
-                print(meas)
+        with self.sess.initiate():
+            timeout = hightime.timedelta(seconds=10)
+            self.sess.wait_for_event(nidcpower.Event.SEQUENCE_ENGINE_DONE, timeout=timeout)
+            for dut in self.dHCItest:
+                for drain in self.dHCItest[dut].VtSat.resource.DRAIN:
+                    chnDrain = self.sess.channels[drain]
+                    num = chnDrain.fetch_backlog
+                    print(num)
+                    meas = chnDrain.fetch_multiple(count=num, timeout=10.0)
+                    print(meas)
+
+        print("VtSat Complete")
 
     def runIbMAX(self):
         timeout = hightime.timedelta(seconds=10)
         self.sess.abort()
+        self.sess.source_mode = nidcpower.SourceMode.SEQUENCE
         self.sess.active_advanced_sequence = 'IbMAXSweep'
-        self.sess.initiate()
-        self.sess.wait_for_event(nidcpower.Event.SEQUENCE_ENGINE_DONE, timeout=timeout)
-        for dut in self.dHCItest:
-            for drain in self.dHCItest[dut].IbMax.resource.DRAIN:
-                chnDrain = self.sess.channels[drain]
-                num = chnDrain.fetch_backlog
-                print(num)
-                meas = chnDrain.fetch_multiple(count=num, timeout=10.0)
-                print(meas)
-        
+        with self.sess.initiate():
+            self.sess.wait_for_event(nidcpower.Event.SEQUENCE_ENGINE_DONE, timeout=timeout)
+            for dut in self.dHCItest:
+                for drain in self.dHCItest[dut].IbMax.resource.DRAIN:
+                    chnDrain = self.sess.channels[drain]
+                    num = chnDrain.fetch_backlog
+                    print(num)
+                    meas = chnDrain.fetch_multiple(count=num, timeout=10.0)
+                    # print(meas)
+        print("IbMAX Complete")
 
 hci = HCItest('test_plan_HCI_1110_V3.xlsx', sitesNum=1)
 hci.common_settings()
 hci._constructVtlinSweeptest()
-# hci._constructVtSatSweeptest()
-# hci._constructIbMAXSweeptest()
-hci.runVtlin()
+hci._constructVtSatSweeptest()
+hci._constructIbMAXSweeptest()
+# hci.runVtlin()
 # hci.runVtSat()
 # hci.runIbMAX()
 
 for i in range(len(hci.stressInterval)):
-    print(hci.stressInterval[i])
+    # print(hci.stressInterval[i])
     # calculate the interval
     if i == 0:
         time_interval = hightime.timedelta(seconds=(hci.stressInterval[i]-0))
@@ -645,9 +676,11 @@ for i in range(len(hci.stressInterval)):
 
     # wait for the interval
     hci.runStress(time_interval)
+    hci.prepareForSequenceMode()
     hci.runVtlin()
     hci.runVtSat()
     hci.runIbMAX()
+hci.sess.close()
 
 
 
