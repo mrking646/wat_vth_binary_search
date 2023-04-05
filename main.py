@@ -176,7 +176,7 @@ class HCIsweep:
         kw_only=True,
     )
 
-  
+
 def dumpExceltoPython(testplan, sitesNum):
     wb = load_workbook(filename=testplan)
     ws = wb.active
@@ -388,8 +388,7 @@ class HCItest:
         dStepsForALLduts_DRAIN = {}
         dStepsForALLduts_SOURCE = {}
         dStepsForALLduts_BULK = {}
-        properties_used = ['output_enabled', 'output_function', 'voltage_level', 'current_limit']
-        self.sess.create_advanced_sequence(sequence_name='VtlinSweep', set_as_active_sequence=True, property_names=properties_used)
+        
         # self.sess.create_advanced_sequence_step(set_as_active_step=True)
 
         max_length = 0
@@ -422,6 +421,8 @@ class HCItest:
 
         #step
         # print(max_length)
+        properties_used = ['output_enabled', 'output_function', 'voltage_level', 'current_limit']
+        self.sess.create_advanced_sequence(sequence_name='VtlinSweep', set_as_active_sequence=True, property_names=properties_used)
         for i in range(max_length):
             self.sess.create_advanced_sequence_step(set_as_active_step=True)
             for dut in self.dHCItest:
@@ -459,7 +460,7 @@ class HCItest:
                 # chnSource.current_limit_autorange = True
                 # chnDrain.current_limit_autorange = True
                 # chnGate.current_limit_autorange = True
-        self.sess.commit()
+        # self.sess.commit()
         
 
 
@@ -639,7 +640,7 @@ class HCItest:
                     print(num)
                     meas = chnDrain.fetch_multiple(count=num, timeout=100.0)
                     # print(meas)
-        print("Vtlin Complete")
+        return meas
 
     def runVtSat(self):
         self.sess.abort()
@@ -656,7 +657,7 @@ class HCItest:
                     meas = chnDrain.fetch_multiple(count=num, timeout=10.0)
                     print(meas)
 
-        print("VtSat Complete")
+        return meas
 
     def runIbMAX(self):
         timeout = hightime.timedelta(seconds=10)
@@ -672,7 +673,14 @@ class HCItest:
                     print(num)
                     meas = chnDrain.fetch_multiple(count=num, timeout=10.0)
                     # print(meas)
-        print("IbMAX Complete")
+        return meas
+    
+    def extract_vth_using_const_current(self):
+        pass
+
+    def extract_vth_using_maxGM(self):
+        pass
+    
 
 hci = HCItest('test_plan_HCI_1110_V3.xlsx', sitesNum=1)
 hci.common_settings()
