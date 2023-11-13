@@ -1,0 +1,15 @@
+Description,voltage,current,in_compliance,channel
+Drain_HCI_Wg_10_Lg_0p13,0.0,0.0,False,SMU1/0
+Source_HCI_Wg_10_Lg_0p13,0.0,0.0,False,SMU1/2
+Bulk_HCI_Wg_10_Lg_0p13,0.0,0.0,False,SMU1/3
+Gate_HCI_Wg_10_Lg_0p13,0.0,0.0,False,SMU1/1
+Description,voltage,current,in_compliance,channel
+Drain_HCI_Wg_10_Lg_0p13,0.0,0.0,False,SMU1/0
+Source_HCI_Wg_10_Lg_0p13,0.0,0.0,False,SMU1/2
+Bulk_HCI_Wg_10_Lg_0p13,0.0,0.0,False,SMU1/3
+Gate_HCI_Wg_10_Lg_0p13,0.0,0.0,False,SMU1/1
+Description,voltage,current,in_compliance,channel
+Drain_HCI_Wg_10_Lg_0p13,0.0,0.0,False,SMU1/0
+Source_HCI_Wg_10_Lg_0p13,0.0,0.0,False,SMU1/2
+Bulk_HCI_Wg_10_Lg_0p13,0.0,0.0,False,SMU1/3
+Gate_HCI_Wg_10_Lg_0p13,0.0,0.0,False,SMU1/1

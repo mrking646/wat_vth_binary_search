@@ -9,4 +9,4 @@ def generateStressTiming(totalTime, num):
 
 
 
-    
+print(generateStressTiming(10000, 20))

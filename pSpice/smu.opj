@@ -1,0 +1,113 @@
+(ExpressProject "smu"
+  (ProjectVersion "19981106")
+  (SoftwareVersion "17.4-2023 S009-[11/12/23]")
+  (ProjectType "Analog or A/D Mixed Mode")
+  (Folder "Design Resources"
+    (Folder "Library"
+      (File
+         "D:\Program Files (x86)\pSpice\tools\capture\library\pspice\analog.olb"
+        (DisplayName
+           "D:\Program Files (x86)\pSpice\tools\capture\library\pspice\analog.olb")
+        (Type "Schematic Library"))
+      (File
+         "D:\Program Files (x86)\pSpice\tools\capture\library\pspice\breakout.olb"
+        (DisplayName
+           "D:\Program Files (x86)\pSpice\tools\capture\library\pspice\breakout.olb")
+        (Type "Schematic Library"))
+      (File
+         "D:\Program Files (x86)\pSpice\tools\capture\library\pspice\source.olb"
+        (DisplayName
+           "D:\Program Files (x86)\pSpice\tools\capture\library\pspice\source.olb")
+        (Type "Schematic Library"))
+      (File
+         "D:\Program Files (x86)\pSpice\tools\capture\library\pspice\special.olb"
+        (DisplayName
+           "D:\Program Files (x86)\pSpice\tools\capture\library\pspice\special.olb")
+        (Type "Schematic Library")))
+    (NoModify)
+    (File "smu.dsn"
+      (Type "Schematic Design"))
+    (BuildFileAddedOrDeleted "x")
+    (CompileFileAddedOrDeleted "x")
+    (ANNOTATE_Scope "0")
+    (ANNOTATE_Mode "1")
+    (ANNOTATE_Action "1")
+    (ANNOTATE_Reset_References_to_1 "FALSE")
+    (ANNOTATE_No_Page_Number_Change "TRUE")
+    (ANNOTATE_Property_Combine "{Value}{Source Package}")
+    (DOCKED "TRUE")
+    (DOCKING_POSITION "59420"))
+  (Folder "Layout")
+  (Folder "Outputs")
+  (Folder "PSpice Resources"
+    (Folder "Model Libraries"
+      (Sort User))
+    (Folder "Stimulus Files"
+      (Sort User))
+    (Folder "Include Files"
+      (Sort User))
+    (Folder "Simulation Profiles"
+      (ActiveProfile ".\smu-pspicefiles\schematic1\bias.sim")
+      (File.PSpice.{09528990-3187-11D2-BC7B-00A0C90CBF91}
+         ".\smu-pspicefiles\schematic1\bias.sim"
+        (DisplayName "SCHEMATIC1-bias")
+        (Type "PSpice Profile"))))
+  (DefaultLibraryBrowseDirectory "library\PSpice")
+  (PartMRUSelector
+    (DAC5311
+      (FullPartName "DAC5311.Normal")
+      (LibraryName "C:\CDS_SPB_HOME\CDSSETUP\PSPTILIBDIR\DAC5311.OLB")
+      (DeviceIndex "0"))
+    (DAC8break
+      (FullPartName "DAC8break.Normal")
+      (LibraryName
+         "D:\PROGRAM FILES (X86)\PSPICE\TOOLS\CAPTURE\LIBRARY\PSPICE\BREAKOUT.OLB")
+      (DeviceIndex "0"))
+    (R
+      (FullPartName "R.Normal")
+      (LibraryName "..\..\LIBRARY\PSPICE\ANALOG.OLB")
+      (DeviceIndex "0"))
+    (C
+      (FullPartName "C.Normal")
+      (LibraryName "..\..\LIBRARY\PSPICE\ANALOG.OLB")
+      (DeviceIndex "0"))
+    (L
+      (FullPartName "L.Normal")
+      (LibraryName "..\..\LIBRARY\PSPICE\ANALOG.OLB")
+      (DeviceIndex "0"))
+    (VSTIM
+      (FullPartName "VSTIM.Normal")
+      (LibraryName "..\..\LIBRARY\PSPICE\SOURCSTM.OLB")
+      (DeviceIndex "0"))
+    (VDC
+      (FullPartName "VDC.Normal")
+      (LibraryName "..\..\LIBRARY\PSPICE\SOURCE.OLB")
+      (DeviceIndex "0")))
+  (LastUsedLibraryBrowseDirectory "LIBRARY\PSPICE")
+  (MPSSessionName "mrkin")
+  (Folder "Logs")
+  (GlobalState
+    (FileView
+      (Path "Design Resources")
+      (Path "Design Resources"
+         "C:\Users\mrkin\Documents\Cogenda\wlr\pSpice\smu.dsn")
+      (Path "Design Resources"
+         "C:\Users\mrkin\Documents\Cogenda\wlr\pSpice\smu.dsn" "SCHEMATIC1")
+      (Select "Design Resources"
+         "C:\Users\mrkin\Documents\Cogenda\wlr\pSpice\smu.dsn"))
+    (HierarchyView)
+    (Doc
+      (Type "COrCapturePMDoc")
+      (Frame
+        (Placement "44 0 1 -1 -1 -1 -1 0 200 0 573"))
+      (Tab 0))
+    (Doc
+      (Type "COrSchematicDoc")
+      (Frame
+        (Placement "44 0 1 -1 -1 -1 -1 5 530 28 595")
+        (Scroll "638 312")
+        (Zoom "208")
+        (Occurrence "/"))
+      (Path "C:\USERS\MRKIN\DOCUMENTS\COGENDA\WLR\PSPICE\SMU.DSN")
+      (Schematic "SCHEMATIC1")
+      (Page "PAGE1"))))

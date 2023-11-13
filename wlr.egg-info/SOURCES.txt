@@ -1,0 +1,10 @@
+README.md
+setup.py
+configs/__init__.py
+configs/config.py
+funcs/__init__.py
+funcs/tools.py
+wlr.egg-info/PKG-INFO
+wlr.egg-info/SOURCES.txt
+wlr.egg-info/dependency_links.txt
+wlr.egg-info/top_level.txt

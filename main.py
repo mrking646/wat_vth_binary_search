@@ -6,7 +6,97 @@ from config import wiring
 import numpy as np
 import hightime
 import time
+import csv
+# -*- coding: utf-8 -*-
+# This file was generated
+import array  # noqa: F401
+# Used by @ivi_synchronized
+from functools import wraps
 
+import nidcpower._attributes as _attributes
+import nidcpower._converters as _converters
+import nidcpower._library_interpreter as _library_interpreter
+import nidcpower.enums as enums
+import nidcpower.errors as errors
+
+import nidcpower.lcr_load_compensation_spot as lcr_load_compensation_spot  # noqa: F401
+
+import nidcpower.lcr_measurement as lcr_measurement  # noqa: F401
+
+import hightime
+
+
+
+def fetch_multiple(self, description, count, timeout=hightime.timedelta(seconds=1.0)):
+        '''fetch_multiple
+
+        Returns a list of named tuples (Measurement) that were
+        previously taken and are stored in the NI-DCPower buffer. This method
+        should not be used when the measure_when property is
+        set to MeasureWhen.ON_DEMAND. You must first call
+        initiate before calling this method.
+
+        Fields in Measurement:
+
+        - **voltage** (float)
+        - **current** (float)
+        - **in_compliance** (bool)
+        - **channel** (str)
+
+        Note:
+        This method is not supported on all devices. For more information about supported devices, search ni.com for Supported Methods by Device.
+
+        Tip:
+        This method can be called on specific channels within your :py:class:`nidcpower.Session` instance.
+        Use Python index notation on the repeated capabilities container channels to specify a subset,
+        and then call this method on the result.
+
+        Example: :py:meth:`my_session.channels[ ... ].fetch_multiple`
+
+        To call the method on all channels, you can call it directly on the :py:class:`nidcpower.Session`.
+
+        Example: :py:meth:`my_session.fetch_multiple`
+
+        Args:
+            count (int): Specifies the number of measurements to fetch.
+
+            timeout (hightime.timedelta, datetime.timedelta, or float in seconds): Specifies the maximum time allowed for this method to complete. If the method does not complete within this time interval, NI-DCPower returns an error.
+                Default value: 1.0 second
+
+                Note: When setting the timeout interval, ensure you take into account any triggers so that the timeout interval is long enough for your application.
+
+
+        Returns:
+            measurements (list of Measurement): List of named tuples with fields:
+
+                - **voltage** (float)
+                - **current** (float)
+                - **in_compliance** (bool)
+                - **channel** (str)
+
+        '''
+        import collections
+        Measurement = collections.namedtuple('Measurement', ['Description', 'voltage', 'current', 'in_compliance', 'channel'])
+
+        voltage_measurements, current_measurements, in_compliances = self._fetch_multiple(timeout, count)
+
+        channel_names = _converters.expand_channel_string(
+            self._repeated_capability,
+            self._all_channels_in_session
+        )
+        assert len(channel_names) == 1, "fetch_multiple only supports one channel at a time"
+        return [
+            Measurement(
+                description,
+                voltage=voltage,
+                current=current,
+                in_compliance=in_compliance,
+                channel=channel_names[0]
+            ) for voltage, current, in_compliance in zip(
+                
+                voltage_measurements, current_measurements, in_compliances
+            )
+        ]
 @attrs.define
 class chnVoltBias:
     description     : str
@@ -266,7 +356,7 @@ def dumpExceltoPython(testplan, sitesNum):
         dHCItest[dut] = HCIsweep(dResource[dut], dut, dTest_Vtlin[dut], dTest_VtSat[dut], dTest_IbMAX[dut])
     return dHCItest
 
-from funcs import generateStressTiming
+from funcs.generateStressTiming import generateInterval
 class HCItest:
     
 
@@ -275,7 +365,7 @@ class HCItest:
         self.current_limit = CurrentLimit()
         self.current_limit_range = CurrentLimitRange()
         self.sess = None
-        self.stressInterval = generateStressTiming(20, num=5)
+        self.stressInterval = generateInterval(10000)
         
     def populate():
         wb = Workbook()    
@@ -291,6 +381,7 @@ class HCItest:
 
     # do voltage stress
     def runStress(self, interval):
+        
         self.sess.abort()
         self.sess.active_advanced_sequence = ''
         self.sess.source_mode = nidcpower.SourceMode.SINGLE_POINT
@@ -302,6 +393,8 @@ class HCItest:
         self.sess.output_connected = False
         self.sess.output_enabled = False
         self.sess.measure_when = nidcpower.MeasureWhen.ON_DEMAND
+        self.sess.aperture_time = 1e-6
+        self.sess.source_delay = 1e-3
 
         for dut in self.dHCItest:
             chnGate = self.sess.channels[','.join(self.dHCItest[dut].Vtlin.resource.GATE)]
@@ -334,16 +427,19 @@ class HCItest:
 
             self.sess.commit()
             
-            with self.sess.initiate():
-                t_begin = hightime.timedelta(seconds=(time.time()))
-                while hightime.timedelta(seconds=(time.time())) - t_begin < interval:
-                    time.sleep(0.1)
-                    measurements = self.sess.measure_multiple()
-                    # print(measurements)
-                else:
-                    self.sess.abort()
-                    self.sess.output_enabled = False
-                    self.sess.output_connected = False
+        with self.sess.initiate():
+            timeout = hightime.timedelta(seconds=(10))
+            t_begin = hightime.timedelta(seconds=(time.time()))
+            while hightime.timedelta(seconds=(time.time())) - t_begin < interval:
+                time.sleep(0.1)
+                self.sess.wait_for_event(nidcpower.Event.SOURCE_COMPLETE, timeout=timeout)
+                measurements = self.sess.measure_multiple()
+                # with 
+                # print(measurements)
+            else:
+                self.sess.abort()
+                self.sess.output_enabled = False
+                self.sess.output_connected = False
 
 
 
@@ -360,7 +456,7 @@ class HCItest:
     # would it be fine if we dump all channels of 4163 into a self.session and we then open the relays we don't need?
     def common_settings(self):
         self.sess = nidcpower.Session(resource_name='SMU1', reset=True,  options = {'simulate': True, 'driver_setup': {'Model': '4163', 'BoardType': 'PXIe', }, })
-        print(self.sess.channels['SMU1/0,SMU1/1'])
+        # print(self.sess.channels['SMU1/0,SMU1/1'])
         self.sess.voltage_level_autorange = True
         self.sess.current_limit_autorange = True
         self.sess.output_function = nidcpower.OutputFunction.DC_VOLTAGE
@@ -518,36 +614,17 @@ class HCItest:
                 chnDrain = self.sess.channels[','.join(self.dHCItest[dut].VtSat.resource.DRAIN)]
                 chnSource = self.sess.channels[','.join(self.dHCItest[dut].VtSat.resource.SOURCE)]
                 chnBulk = self.sess.channels[','.join(self.dHCItest[dut].VtSat.resource.BULK)]
-
+                
                 chnGate.voltage_level = dStepsForALLduts_GATE[dut][i]
                 chnDrain.voltage_level = dStepsForALLduts_DRAIN[dut][i]
                 chnSource.voltage_level = dStepsForALLduts_SOURCE[dut][i]
                 chnBulk.voltage_level = dStepsForALLduts_BULK[dut][i]
-                # print(dStepsForALLduts_GATE[dut][i])
-                chnGate.output_enabled = True
-                chnDrain.output_enabled = True
-                chnSource.output_enabled = True
-                chnBulk.output_enabled = True
-                # chnGate.output_connected = True
-                # chnDrain.output_connected = True
-                # chnSource.output_connected = True
-                # chnBulk.output_connected = True
-                chnGate.output_function = nidcpower.OutputFunction.DC_VOLTAGE
-                chnDrain.output_function = nidcpower.OutputFunction.DC_VOLTAGE
-                chnSource.output_function = nidcpower.OutputFunction.DC_VOLTAGE
-                chnBulk.output_function = nidcpower.OutputFunction.DC_VOLTAGE
-                chnBulk.current_limit = self.current_limit.high_level
-                chnSource.current_limit = self.current_limit.high_level
-                chnDrain.current_limit = self.current_limit.high_level
-                chnGate.current_limit = self.current_limit.low_level
-                chnBulk.current_limit_range = self.current_limit_range.high_level
-                chnSource.current_limit_range = self.current_limit_range.high_level
-                chnDrain.current_limit_range = self.current_limit_range.high_level
-                chnGate.current_limit_range = self.current_limit_range.low_level
-                # chnBulk.current_limit_autorange = True
-                # chnSource.current_limit_autorange = True
-                # chnDrain.current_limit_autorange = True
-                # chnGate.current_limit_autorange = True
+                for chns in [chnGate, chnBulk, chnSource, chnDrain]:
+                    chns.output_function = nidcpower.OutputFunction.DC_VOLTAGE
+                    chns.current_limit = self.current_limit.high_level
+                    chns.current_limit_autorange = True
+                    chns.output_enabled = True
+
         self.sess.commit()
 
 
@@ -603,10 +680,6 @@ class HCItest:
                 chnSource.current_limit = self.current_limit.high_level
                 chnDrain.current_limit = self.current_limit.high_level
                 chnGate.current_limit = self.current_limit.low_level
-                # chnBulk.current_limit_range = self.current_limit_range.high_level
-                # chnSource.current_limit_range = self.current_limit_range.high_level
-                # chnDrain.current_limit_range = self.current_limit_range.high_level
-                # chnGate.current_limit_range = self.current_limit_range.low_level
                 chnBulk.current_limit_autorange = True
                 chnSource.current_limit_autorange = True
                 chnDrain.current_limit_autorange = True
@@ -628,36 +701,172 @@ class HCItest:
         pass
 
     def runVtlin(self):
-        # self.sess.abort()
         self.sess.source_mode = nidcpower.SourceMode.SEQUENCE
         self.sess.active_advanced_sequence = 'VtlinSweep'
+        
         with self.sess.initiate():
             self.sess.wait_for_event(nidcpower.Event.SEQUENCE_ENGINE_DONE, timeout=100.0)
             for dut in self.dHCItest:
+                lst_meas_drain = []
+                lst_meas_source = []
+                lst_meas_bulk = []
+                lst_meas_gate = []
                 for drain in self.dHCItest[dut].Vtlin.resource.DRAIN:
                     chnDrain = self.sess.channels[drain]
                     num = chnDrain.fetch_backlog
-                    print(num)
-                    meas = chnDrain.fetch_multiple(count=num, timeout=100.0)
-                    # print(meas)
-        return meas
+                    descrip = f"Drain_{dut}"
+                    meas_drain = fetch_multiple(chnDrain,descrip, count=num, timeout=100.0) 
+                    lst_meas_drain.append(meas_drain) 
 
+                for source in self.dHCItest[dut].Vtlin.resource.SOURCE:
+                    chnSource = self.sess.channels[source]
+                    num = chnSource.fetch_backlog
+                    descrip = f"Source_{dut}"
+                    meas_source = fetch_multiple(chnSource,descrip, count=num, timeout=100.0)
+                    lst_meas_source.append(meas_source)
+
+                for bulk in self.dHCItest[dut].Vtlin.resource.BULK:
+                    chnBulk = self.sess.channels[bulk]
+                    num = chnBulk.fetch_backlog
+                    descrip = f"Bulk_{dut}"
+                    meas_bulk = fetch_multiple(chnBulk,descrip, count=num, timeout=100.0)
+                    lst_meas_bulk.append(meas_bulk)
+
+                for gate in self.dHCItest[dut].Vtlin.resource.GATE:
+                    chnGate = self.sess.channels[gate]
+                    num = chnGate.fetch_backlog
+                    descrip = f"Gate_{dut}"
+                    meas_gate = fetch_multiple(chnGate,descrip, count=num, timeout=100.0)
+                    lst_meas_gate.append(meas_gate)
+
+                csv_file_path = f'{dut}_Vth.csv'
+                with open(csv_file_path, mode='a', newline='') as csv_file:
+                    fieldnames = ['Description', 'voltage', 'current', 'in_compliance', 'channel']
+                    writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+                    writer.writeheader()
+
+                meas_dict = {
+                    'Drain': lst_meas_drain,
+                    'Source': lst_meas_source,
+                    'Bulk': lst_meas_bulk,
+                    'Gate': lst_meas_gate
+                }  
+
+                
+                    # write header to csv
+                    
+
+                for terminal, lst_meas in meas_dict.items():
+                    # print(terminal, lst_meas)
+                    # with open(f'{terminal}.csv', 'w') as f:
+                    for measurements in lst_meas:
+                        for measurement in measurements:
+                            # print(measurement)
+                            with open(csv_file_path, mode='a', newline='') as csv_file:
+                                fieldnames = ['Description', 'voltage', 'current', 'in_compliance', 'channel']
+                                writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+
+                                # Write the header
+                                
+
+                                # Write the data
+                                writer.writerow({
+                                    'Description': measurement.Description,
+                                    'voltage': measurement.voltage,
+                                    'current': measurement.current,
+                                    'in_compliance': measurement.in_compliance,
+                                    'channel': measurement.channel
+                                })
+
+                            print(f'Data has been written to {csv_file_path}')         
+
+                    
+
+
+
+
+        # return meas_drain, meas_source, meas_bulk, meas_gate        
     def runVtSat(self):
         self.sess.abort()
         self.sess.source_mode = nidcpower.SourceMode.SEQUENCE
         self.sess.active_advanced_sequence = 'VtsatSweep'
         with self.sess.initiate():
-            timeout = hightime.timedelta(seconds=10)
-            self.sess.wait_for_event(nidcpower.Event.SEQUENCE_ENGINE_DONE, timeout=timeout)
+            self.sess.wait_for_event(nidcpower.Event.SEQUENCE_ENGINE_DONE, timeout=100.0)
             for dut in self.dHCItest:
+                lst_meas_drain = []
+                lst_meas_source = []
+                lst_meas_bulk = []
+                lst_meas_gate = []
                 for drain in self.dHCItest[dut].VtSat.resource.DRAIN:
                     chnDrain = self.sess.channels[drain]
                     num = chnDrain.fetch_backlog
-                    print(num)
-                    meas = chnDrain.fetch_multiple(count=num, timeout=10.0)
-                    print(meas)
+                    descrip = f"Drain_{dut}"
+                    meas_drain = fetch_multiple(chnDrain,descrip, count=num, timeout=100.0) 
+                    lst_meas_drain.append(meas_drain) 
 
-        return meas
+                for source in self.dHCItest[dut].VtSat.resource.SOURCE:
+                    chnSource = self.sess.channels[source]
+                    num = chnSource.fetch_backlog
+                    descrip = f"Source_{dut}"
+                    meas_source = fetch_multiple(chnSource,descrip, count=num, timeout=100.0)
+                    lst_meas_source.append(meas_source)
+
+                for bulk in self.dHCItest[dut].VtSat.resource.BULK:
+                    chnBulk = self.sess.channels[bulk]
+                    num = chnBulk.fetch_backlog
+                    descrip = f"Bulk_{dut}"
+                    meas_bulk = fetch_multiple(chnBulk,descrip, count=num, timeout=100.0)
+                    lst_meas_bulk.append(meas_bulk)
+
+                for gate in self.dHCItest[dut].VtSat.resource.GATE:
+                    chnGate = self.sess.channels[gate]
+                    num = chnGate.fetch_backlog
+                    descrip = f"Gate_{dut}"
+                    meas_gate = fetch_multiple(chnGate,descrip, count=num, timeout=100.0)
+                    lst_meas_gate.append(meas_gate)
+
+                csv_file_path = f'{dut}_Vth.csv'
+                with open(csv_file_path, mode='a', newline='') as csv_file:
+                    fieldnames = ['Description', 'voltage', 'current', 'in_compliance', 'channel']
+                    writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+                    writer.writeheader()
+
+                meas_dict = {
+                    'Drain': lst_meas_drain,
+                    'Source': lst_meas_source,
+                    'Bulk': lst_meas_bulk,
+                    'Gate': lst_meas_gate
+                }  
+
+                
+                    # write header to csv
+                    
+
+                for terminal, lst_meas in meas_dict.items():
+                    # print(terminal, lst_meas)
+                    # with open(f'{terminal}.csv', 'w') as f:
+                    for measurements in lst_meas:
+                        for measurement in measurements:
+                            # print(measurement)
+                            with open(csv_file_path, mode='a', newline='') as csv_file:
+                                fieldnames = ['Description', 'voltage', 'current', 'in_compliance', 'channel']
+                                writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+
+                                # Write the header
+                                
+
+                                # Write the data
+                                writer.writerow({
+                                    'Description': measurement.Description,
+                                    'voltage': measurement.voltage,
+                                    'current': measurement.current,
+                                    'in_compliance': measurement.in_compliance,
+                                    'channel': measurement.channel
+                                })
+
+                            print(f'Data has been written to {csv_file_path}')       
+
+
 
     def runIbMAX(self):
         timeout = hightime.timedelta(seconds=10)
@@ -665,15 +874,80 @@ class HCItest:
         self.sess.source_mode = nidcpower.SourceMode.SEQUENCE
         self.sess.active_advanced_sequence = 'IbMAXSweep'
         with self.sess.initiate():
-            self.sess.wait_for_event(nidcpower.Event.SEQUENCE_ENGINE_DONE, timeout=timeout)
+            self.sess.wait_for_event(nidcpower.Event.SEQUENCE_ENGINE_DONE, timeout=100.0)
             for dut in self.dHCItest:
+                lst_meas_drain = []
+                lst_meas_source = []
+                lst_meas_bulk = []
+                lst_meas_gate = []
                 for drain in self.dHCItest[dut].IbMax.resource.DRAIN:
                     chnDrain = self.sess.channels[drain]
                     num = chnDrain.fetch_backlog
-                    print(num)
-                    meas = chnDrain.fetch_multiple(count=num, timeout=10.0)
-                    # print(meas)
-        return meas
+                    descrip = f"Drain_{dut}"
+                    meas_drain = fetch_multiple(chnDrain,descrip, count=num, timeout=100.0) 
+                    lst_meas_drain.append(meas_drain) 
+
+                for source in self.dHCItest[dut].IbMax.resource.SOURCE:
+                    chnSource = self.sess.channels[source]
+                    num = chnSource.fetch_backlog
+                    descrip = f"Source_{dut}"
+                    meas_source = fetch_multiple(chnSource,descrip, count=num, timeout=100.0)
+                    lst_meas_source.append(meas_source)
+
+                for bulk in self.dHCItest[dut].IbMax.resource.BULK:
+                    chnBulk = self.sess.channels[bulk]
+                    num = chnBulk.fetch_backlog
+                    descrip = f"Bulk_{dut}"
+                    meas_bulk = fetch_multiple(chnBulk,descrip, count=num, timeout=100.0)
+                    lst_meas_bulk.append(meas_bulk)
+
+                for gate in self.dHCItest[dut].IbMax.resource.GATE:
+                    chnGate = self.sess.channels[gate]
+                    num = chnGate.fetch_backlog
+                    descrip = f"Gate_{dut}"
+                    meas_gate = fetch_multiple(chnGate,descrip, count=num, timeout=100.0)
+                    lst_meas_gate.append(meas_gate)
+
+                csv_file_path = f'{dut}_IbMax.csv'
+                with open(csv_file_path, mode='a', newline='') as csv_file:
+                    fieldnames = ['Description', 'voltage', 'current', 'in_compliance', 'channel']
+                    writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+                    writer.writeheader()
+
+                meas_dict = {
+                    'Drain': lst_meas_drain,
+                    'Source': lst_meas_source,
+                    'Bulk': lst_meas_bulk,
+                    'Gate': lst_meas_gate
+                }  
+
+                
+                    # write header to csv
+                    
+
+                for terminal, lst_meas in meas_dict.items():
+                    # print(terminal, lst_meas)
+                    # with open(f'{terminal}.csv', 'w') as f:
+                    for measurements in lst_meas:
+                        for measurement in measurements:
+                            # print(measurement)
+                            with open(csv_file_path, mode='a', newline='') as csv_file:
+                                fieldnames = ['Description', 'voltage', 'current', 'in_compliance', 'channel']
+                                writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+
+                                # Write the header
+                                
+
+                                # Write the data
+                                writer.writerow({
+                                    'Description': measurement.Description,
+                                    'voltage': measurement.voltage,
+                                    'current': measurement.current,
+                                    'in_compliance': measurement.in_compliance,
+                                    'channel': measurement.channel
+                                })
+
+                            print(f'Data has been written to {csv_file_path}')       
     
     def extract_vth_using_const_current(self):
         pass
