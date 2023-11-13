@@ -825,7 +825,7 @@ class HCItest:
                     meas_gate = fetch_multiple(chnGate,descrip, count=num, timeout=100.0)
                     lst_meas_gate.append(meas_gate)
 
-                csv_file_path = f'{dut}_Vth.csv'
+                csv_file_path = f'{dut}_VtSat.csv'
                 with open(csv_file_path, mode='a', newline='') as csv_file:
                     fieldnames = ['Description', 'voltage', 'current', 'in_compliance', 'channel']
                     writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
@@ -972,11 +972,17 @@ for i in range(len(hci.stressInterval)):
         time_interval = hightime.timedelta(seconds=(hci.stressInterval[i]-hci.stressInterval[i-1]))
 
     # wait for the interval
+    print(time_interval)
+    t0 = time.time()
     hci.runStress(time_interval)
+    t1 = time.time()
+    print("time elapsed: ", t1-t0)
     hci.prepareForSequenceMode()
     hci.runVtlin()
     hci.runVtSat()
     hci.runIbMAX()
+    print(i)
+    time.sleep(1000)
 hci.sess.close()
 
 
