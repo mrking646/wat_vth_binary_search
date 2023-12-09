@@ -1,7 +1,7 @@
 import csv
 # from dataclasses import KW_ONLY
 import time
-from audioop import bias
+# from audioop import bias
 from multiprocessing.sharedctypes import Value
 import attrs
 import enum
@@ -15,11 +15,77 @@ import multiprocessing
 from itertools import repeat
 import pandas as pd
 import contextlib
-from funcs.tools import check_compliance
+# from funcs.tools import check_compliance
 # from driver.HP4156C import HP4156C
 # from ppmu_beat import beat
 # from driver.E5250A import E5250A_Simple
 
+import nidcpower._converters as _converters
+
+from extract_exact_measurement import InstrumentData
+def measure_multiple(self, description, site):
+    '''measure_multiple
+
+    Returns a list of named tuples (Measurement) containing the measured voltage
+    and current values on the specified output channel(s). Each call to this method
+    blocks other method calls until the measurements are returned from the device.
+    The order of the measurements returned in the array corresponds to the order
+    on the specified output channel(s).
+
+    Fields in Measurement:
+
+    - **voltage** (float)
+    - **current** (float)
+    - **in_compliance** (bool) - Always None
+    - **channel** (str)
+
+    Note:
+    This method is not supported on all devices. For more information about supported devices, search ni.com for Supported Methods by Device.
+
+    Tip:
+    This method can be called on specific channels within your :py:class:`nidcpower.Session` instance.
+    Use Python index notation on the repeated capabilities container channels to specify a subset,
+    and then call this method on the result.
+
+    Example: :py:meth:`my_session.channels[ ... ].measure_multiple`
+
+    To call the method on all channels, you can call it directly on the :py:class:`nidcpower.Session`.
+
+    Example: :py:meth:`my_session.measure_multiple`
+
+    Returns:
+        measurements (list of Measurement): List of named tuples with fields:
+
+            - **voltage** (float)
+            - **current** (float)
+            - **in_compliance** (bool) - Always None
+            - **channel** (str)
+
+    '''
+    import collections
+    Measurement = collections.namedtuple('Measurement', ['voltage', 'current', 'in_compliance', 'channel'])
+
+    voltage_measurements, current_measurements = self._measure_multiple()
+
+    channel_names = _converters.expand_channel_string(
+        self._repeated_capability,
+        self._all_channels_in_session
+    )
+    assert (
+        len(channel_names) == len(voltage_measurements) and len(channel_names) == len(current_measurements)
+    ), "measure_multiple should return as many voltage and current measurements as the number of channels specified through the channel string"
+    return [
+        Measurement(
+            description,
+            site,
+            voltage=voltage,
+            current=current,
+            in_compliance=None,
+            channel=channel_name
+        ) for voltage, current, channel_name in zip(
+            voltage_measurements, current_measurements, channel_names
+        )
+    ]
 
 def ivi_synchronized(f):
     @wraps(f)
@@ -333,43 +399,43 @@ def fetch_multiple(self, chn, count, timeout=hightime.timedelta(seconds=1.0)):
 
 
 
-# def check_compliance(resources, sess: nidcpower.Session, current_ranges):
-#     resources_in_compl = []
-#     for res in resources:
-#         chn  = sess.channels[res]
-#         if chn.query_in_compliance():
-#             print("!!!!comp")
-#             resources_in_compl.append(res)
-#     temp = iter(resources_in_compl)
-#     while True:
-#             try:
+def check_compliance(resources, sess: nidcpower.Session, current_ranges):
+    resources_in_compl = []
+    for res in resources:
+        chn  = sess.channels[res]
+        if chn.query_in_compliance():
+            print("!!!!comp")
+            resources_in_compl.append(res)
+    temp = iter(resources_in_compl)
+    while True:
+            try:
                 
-#                 chn = sess.channels[next(temp)]
-#                 # if chn.current_limit == current_ranges[0]:
-#                 #     chn.abort()
+                chn = sess.channels[next(temp)]
+                # if chn.current_limit == current_ranges[0]:
+                #     chn.abort()
 
                 
-#                 #     chn.aperture_time = 5e-3
-#                 #     chn.initiate()
+                #     chn.aperture_time = 5e-3
+                #     chn.initiate()
                     
                 
-#                 print(f"change to {chn.current_limit}")
-#                 # chn.current_limit_range = current_ranges[current_ranges.index(chn.current_limit_range)+1] # go to next current_limit_range
-#                 chn.current_limit       = current_ranges[current_ranges.index(chn.current_limit_range)+1] # go to next current_limit
-#             except StopIteration:
-#                 break
+                print(f"change to {chn.current_limit}")
+                # chn.current_limit_range = current_ranges[current_ranges.index(chn.current_limit_range)+1] # go to next current_limit_range
+                chn.current_limit       = current_ranges[current_ranges.index(chn.current_limit_range)+1] # go to next current_limit
+            except StopIteration:
+                break
     
-#     if len(resources_in_compl) == 0:
-#         return None
-#     else:
-#         check_compliance(resources_in_compl, sess, current_ranges)
+    if len(resources_in_compl) == 0:
+        return None
+    else:
+        check_compliance(resources_in_compl, sess, current_ranges)
     
     
         
 
 
 
-def runIVSweeps_softwareAutoRange(*lstIVSweep : IVSweep, CSV_name, channel_read):
+def runIVSweeps_softwareAutoRange(*lstIVSweep : IVSweep, CSV_name, channel_read, data_container:InstrumentData):
 
     # beat(1)
 
@@ -499,14 +565,18 @@ def runIVSweeps_softwareAutoRange(*lstIVSweep : IVSweep, CSV_name, channel_read)
 
             # chnSweep.send_software_edge_trigger(nidcpower.SendSoftwareEdgeTriggerType.SOURCE) # send source trigger to sweep chn
             session.wait_for_event(nidcpower.Event.SOURCE_COMPLETE, timeout=timeout)
-            check_compliance(session)
+            check_compliance(resources, session, 10e-6)
 
             
             
 
-            
-            measurements = session.channels[channel_read].measure_multiple()[0]
-            df_meas_list.append(measurements.current)
+            # print(f'reading channel is {channel_read}')
+            measurements = session.measure_multiple()
+            # measurements = session.channels[channel_read].measure_multiple()[0]
+            # print(measurements)
+            data_container.add_measurement(measurements)
+
+            # df_meas_list.append(measurements.current)
             
     # print(session.get_channel_names("0:10"))
     session.close()
@@ -519,56 +589,58 @@ def _test():
 
     
     matrix_address = "GPIB0::22::INSTR"
-    map = {
-        E5250A_Simple.InputPort.SMU1: 6, #AF
-        E5250A_Simple.InputPort.SMU2: 5, #Gate
-        E5250A_Simple.InputPort.SMU3: 4, #Source&Bulk
-        E5250A_Simple.InputPort.SMU3: 8, #Bulk
-        E5250A_Simple.InputPort.SMU4: 9, #Guard
-        E5250A_Simple.InputPort.SMU5: 7, #AS
-    }
-    matrix = E5250A_Simple(matrix_address)
-    with matrix.connect():
-        with matrix.setupPortMap(map):
-            vtlin = IVSweep(ChnVoltSweep('G', 'SMU2/0', V_start=0, V_stop=1.2, V_step=0.02, I_compl=1e-3, remote_sense=False),
-                        [ChnVoltBias('AF', 'SMU1/0', 0.1, I_compl=1e-3, remote_sense=True),
-                        ChnVoltBias('Guard', 'SMU4/0', 0.1, I_compl=1e-3),
-                        ChnVoltBias('S&B', 'SMU3/0', 0, I_compl=1e-3),
-                        
-                        
-                        ],
-                        apertureTime=20e-3,
-                        sourceDelay=5e-5,
-                        isMaster=1,
-                        )
+    # map = {
+    #     E5250A_Simple.InputPort.SMU1: 6, #AF
+    #     E5250A_Simple.InputPort.SMU2: 5, #Gate
+    #     E5250A_Simple.InputPort.SMU3: 4, #Source&Bulk
+    #     E5250A_Simple.InputPort.SMU3: 8, #Bulk
+    #     E5250A_Simple.InputPort.SMU4: 9, #Guard
+    #     E5250A_Simple.InputPort.SMU5: 7, #AS
+    # }
+    # matrix = E5250A_Simple(matrix_address)
+    # with matrix.connect():
+    #     with matrix.setupPortMap(map):
+    vtlin = IVSweep(ChnVoltSweep('G', 'SMU2/0', V_start=0, V_stop=1.2, V_step=0.02, I_compl=1e-3, remote_sense=False),
+                [ChnVoltBias('AF', 'SMU1/0', 0.1, I_compl=1e-3, remote_sense=True),
+                ChnVoltBias('Guard', 'SMU4/0', 0.1, I_compl=1e-3),
+                ChnVoltBias('S&B', 'SMU3/0', 0, I_compl=1e-3),
+                
+                
+                ],
+                apertureTime=20e-3,
+                sourceDelay=5e-5,
+                isMaster=1,
+                )
 
-            vtlin1 = IVSweep(ChnVoltSweep('Guard', 'SMU4163/1', V_start=0, V_stop=1.2, V_step=0.02, I_compl=1e-3, remote_sense=False),
-                        [ChnVoltBias('D', 'SMU4163/2', 0.1, I_compl=1e-3, remote_sense=False),
-                        
-                        
-                        ],
-                        apertureTime=20e-3,
-                        sourceDelay=5e-5,
-                        isMaster=1,
-                        )
+    vtlin1 = IVSweep(ChnVoltSweep('Guard', 'SMU4163/1', V_start=0, V_stop=1.2, V_step=0.02, I_compl=1e-3, remote_sense=False),
+                [ChnVoltBias('D', 'SMU4163/2', 0.1, I_compl=1e-3, remote_sense=False),
+                
+                
+                ],
+                apertureTime=20e-3,
+                sourceDelay=5e-5,
+                isMaster=1,
+                )
 
-            diode_csv = ".csv"
-            HQB_csv = "chuckFloating_NMOS12_wg10Lg0p13_2_3rd_0p5ms_SourceDelay.csv"
-            demo= '4163_Core_HCI_NMOS_withTheDoorClosed__everythingClosed.csv'
-            start = time.time()
-            runIVSweeps_softwareAutoRange(vtlin, CSV_name=demo)
-            stop = time.time()
-            print(stop - start)
+    diode_csv = ".csv"
+    HQB_csv = "chuckFloating_NMOS12_wg10Lg0p13_2_3rd_0p5ms_SourceDelay.csv"
+    demo= '4163_Core_HCI_NMOS_withTheDoorClosed__everythingClosed.csv'
+    start = time.time()
+    pxie4163_measurement = InstrumentData()
+    runIVSweeps_softwareAutoRange(vtlin, CSV_name=demo, channel_read="SMU1/0, SMU2/0", data_container=pxie4163_measurement)
+    stop = time.time()
+    print(pxie4163_measurement.get_measurements_by_channel("SMU2/0"))
+    print(stop - start)
 
-            # test4156(CSV_name=demo)
-            # runIVSweeps(HQ, CSV_name=HQ_csv)
-            NBTI = "A2E049_w4_NBTI_PLR_HCI_4_die_0_0_Lg0p3.csv"
+    # test4156(CSV_name=demo)
+    # runIVSweeps(HQ, CSV_name=HQ_csv)
+    NBTI = "A2E049_w4_NBTI_PLR_HCI_4_die_0_0_Lg0p3.csv"
 
-            t1 = datetime.datetime.now()
-
-
+    t1 = datetime.datetime.now()
 
 
 
-# _test()
+
+
+_test()
 # measurement1pt()
